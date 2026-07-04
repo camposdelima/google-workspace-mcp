@@ -1,0 +1,17 @@
+{
+  "name": "google-workspace-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "keywords": ["mcp", "google-workspace", "chat", "gmail", "calendar"],
+  "author": "Cristiano Campos",
+  "license": "MIT",
+  "description": "MCP wrapper for Google Workspace APIs (Chat, Gmail, Calendar)",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  }
+}
