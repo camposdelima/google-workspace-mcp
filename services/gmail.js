@@ -15,6 +15,39 @@ async function gmailApiRequest(method, path, body = null) {
   });
 }
 
+export function encodeGmailMessage({ to, subject, body, cc, bcc }) {
+  const headers = [
+    'From: me',
+    `To: ${to}`,
+    `Subject: ${subject}`
+  ];
+
+  if (cc) headers.push(`Cc: ${cc}`);
+  if (bcc) headers.push(`Bcc: ${bcc}`);
+
+  const email = `${headers.join('\r\n')}\r\n\r\n${body}`;
+
+  return Buffer.from(email)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+}
+
+export async function send_message_withRequest(apiRequest, { to, subject, body, cc, bcc }) {
+  const encodedEmail = encodeGmailMessage({ to, subject, body, cc, bcc });
+
+  const response = await apiRequest('POST', `/gmail/v1/users/me/messages/send`, {
+    raw: encodedEmail
+  });
+
+  return {
+    messageId: response.id,
+    threadId: response.threadId,
+    labelIds: response.labelIds || []
+  };
+}
+
 export async function list_messages({ query, maxResults = 10, pageToken }) {
   const params = new URLSearchParams();
   params.set('maxResults', Math.min(maxResults, 100));
@@ -92,33 +125,7 @@ export async function search_messages({ query, maxResults = 25, pageToken }) {
 }
 
 export async function send_message({ to, subject, body, cc, bcc }) {
-  // Create email message in RFC 2822 format
-  const email = [
-    `From: me`,
-    `To: ${to}`,
-    cc ? `Cc: ${cc}` : '',
-    bcc ? `Bcc: ${bcc}` : '',
-    `Subject: ${subject}`,
-    ``,
-    body
-  ].filter(Boolean).join('\r\n');
-
-  // Encode to base64url
-  const encodedEmail = Buffer.from(email)
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-
-  const response = await gmailApiRequest('POST', `/gmail/v1/users/me/messages/send`, {
-    raw: encodedEmail
-  });
-
-  return {
-    messageId: response.id,
-    threadId: response.threadId,
-    labelIds: response.labelIds || []
-  };
+  return send_message_withRequest(gmailApiRequest, { to, subject, body, cc, bcc });
 }
 
 export async function list_labels() {

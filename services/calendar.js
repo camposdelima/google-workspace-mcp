@@ -15,6 +15,53 @@ async function calendarApiRequest(method, path, body = null) {
   });
 }
 
+export function computeFreeSlots(events, timeMin, timeMax, interval = 30) {
+  const busySlots = (events || [])
+    .filter(e => e.isBusyTime)
+    .map(e => ({
+      start: new Date(e.start),
+      end: new Date(e.end)
+    }));
+
+  const start = new Date(timeMin);
+  const end = new Date(timeMax);
+  const freeSlots = [];
+  const intervalMs = interval * 60 * 1000;
+
+  let current = new Date(start);
+  while (current < end) {
+    const slotEnd = new Date(current.getTime() + intervalMs);
+    const isBusy = busySlots.some(busy =>
+      current < busy.end && slotEnd > busy.start
+    );
+
+    if (!isBusy && slotEnd <= end) {
+      freeSlots.push({
+        start: current.toISOString(),
+        end: slotEnd.toISOString()
+      });
+    }
+
+    current = new Date(current.getTime() + intervalMs);
+  }
+
+  return {
+    freeSlots,
+    slotDurationMinutes: interval
+  };
+}
+
+export async function find_free_slots_withListEvents(listEvents, { calendarId = 'primary', timeMin, timeMax, interval = 30 }) {
+  const eventsResponse = await listEvents({
+    calendarId,
+    timeMin,
+    timeMax,
+    maxResults: 250
+  });
+
+  return computeFreeSlots(eventsResponse.events || [], timeMin, timeMax, interval);
+}
+
 export async function list_events({ calendarId = 'primary', timeMin, timeMax, maxResults = 10, pageToken }) {
   const params = new URLSearchParams();
   params.set('maxResults', Math.min(maxResults, 250));
@@ -147,45 +194,5 @@ export async function delete_event({ calendarId = 'primary', eventId }) {
 }
 
 export async function find_free_slots({ calendarId = 'primary', timeMin, timeMax, interval = 30 }) {
-  // List all events in the time range
-  const eventsResponse = await list_events({
-    calendarId,
-    timeMin,
-    timeMax,
-    maxResults: 250
-  });
-
-  const events = eventsResponse.events.filter(e => e.isBusyTime);
-  const busySlots = events.map(e => ({
-    start: new Date(e.start),
-    end: new Date(e.end)
-  }));
-
-  // Generate free slots
-  const start = new Date(timeMin);
-  const end = new Date(timeMax);
-  const freeSlots = [];
-  const intervalMs = interval * 60 * 1000; // Convert minutes to ms
-
-  let current = new Date(start);
-  while (current < end) {
-    const slotEnd = new Date(current.getTime() + intervalMs);
-    const isBusy = busySlots.some(busy => 
-      current < busy.end && slotEnd > busy.start
-    );
-
-    if (!isBusy && slotEnd <= end) {
-      freeSlots.push({
-        start: current.toISOString(),
-        end: slotEnd.toISOString()
-      });
-    }
-
-    current = new Date(current.getTime() + intervalMs);
-  }
-
-  return {
-    freeSlots,
-    slotDurationMinutes: interval
-  };
+  return find_free_slots_withListEvents(list_events, { calendarId, timeMin, timeMax, interval });
 }

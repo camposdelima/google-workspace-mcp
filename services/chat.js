@@ -15,12 +15,12 @@ async function chatApiRequest(method, path, body = null) {
   });
 }
 
-export async function search_conversations({ spaceNameQuery, pageSize = 100, pageToken }) {
+export async function search_conversations_withRequest(apiRequest, { spaceNameQuery, pageSize = 100, pageToken }) {
   const params = new URLSearchParams();
   if (pageSize) params.set('pageSize', Math.min(pageSize, 100));
   if (pageToken) params.set('pageToken', pageToken);
 
-  const response = await chatApiRequest('GET', `/v1/spaces?${params}`);
+  const response = await apiRequest('GET', `/v1/spaces?${params}`);
 
   let conversations = (response.spaces || []).map(space => ({
     conversationId: space.name,
@@ -33,7 +33,6 @@ export async function search_conversations({ spaceNameQuery, pageSize = 100, pag
     lastActiveTimestamp: space.lastActiveTime
   }));
 
-  // Filter by spaceNameQuery (case-insensitive substring match)
   if (spaceNameQuery) {
     const q = spaceNameQuery.toLowerCase();
     conversations = conversations.filter(c =>
@@ -45,6 +44,10 @@ export async function search_conversations({ spaceNameQuery, pageSize = 100, pag
     conversations,
     nextPageToken: response.nextPageToken || ''
   };
+}
+
+export async function search_conversations({ spaceNameQuery, pageSize = 100, pageToken }) {
+  return search_conversations_withRequest(chatApiRequest, { spaceNameQuery, pageSize, pageToken });
 }
 
 export async function list_messages({ conversationId, threadId, pageSize = 20, pageToken, startTime, endTime }) {
