@@ -102,9 +102,8 @@ function getClientId() {
   if (process.env.GOOGLE_CLIENT_ID) {
     const raw = process.env.GOOGLE_CLIENT_ID;
     const trimmed = raw.trim();
-    debugLog('CLIENT_ID raw length:', raw.length, 'trimmed length:', trimmed.length);
-    debugLog('CLIENT_ID first 20 chars:', trimmed.substring(0, 20));
-    debugLog('CLIENT_ID last 20 chars:', trimmed.substring(trimmed.length - 20));
+    debugLog('CLIENT_ID detected in environment');
+    debugLog('CLIENT_ID length:', trimmed.length);
     return trimmed;
   }
   
@@ -120,9 +119,8 @@ function getClientSecret() {
   if (process.env.GOOGLE_CLIENT_SECRET) {
     const raw = process.env.GOOGLE_CLIENT_SECRET;
     const trimmed = raw.trim();
-    debugLog('CLIENT_SECRET raw length:', raw.length, 'trimmed length:', trimmed.length);
-    debugLog('CLIENT_SECRET first 10 chars:', trimmed.substring(0, 10));
-    debugLog('CLIENT_SECRET last 10 chars:', trimmed.substring(trimmed.length - 10));
+    debugLog('CLIENT_SECRET detected in environment');
+    debugLog('CLIENT_SECRET length:', trimmed.length);
     return trimmed;
   }
 
@@ -166,8 +164,7 @@ function generateAuthUrl(clientId) {
 async function exchangeCodeForToken(code, clientId, clientSecret) {
   return new Promise((resolve, reject) => {
     console.error(`\n[DEBUG] Exchanging code for token...`);
-    console.error(`[DEBUG] Client ID: ${clientId}`);
-    console.error(`[DEBUG] Client Secret: ${clientSecret.substring(0, 15)}...`);
+    console.error(`[DEBUG] OAuth credentials present: clientId=${Boolean(clientId)}, clientSecret=${Boolean(clientSecret)}`);
     console.error(`[DEBUG] Redirect URI: ${REDIRECT_URI}\n`);
     
     const postData = new URLSearchParams({
