@@ -7,12 +7,92 @@ import { getAccessToken } from '../utils/auth.js';
 import { httpRequest } from '../utils/http-client.js';
 
 const CHAT_API_HOST = 'chat.googleapis.com';
+const PEOPLE_API_HOST = 'people.googleapis.com';
 
 async function chatApiRequest(method, path, body = null) {
   const token = await getAccessToken();
   return httpRequest(method, CHAT_API_HOST, path, body, {
     'Authorization': `Bearer ${token}`
   });
+}
+
+async function peopleApiRequest(method, path, body = null) {
+  const token = await getAccessToken();
+  return httpRequest(method, PEOPLE_API_HOST, path, body, {
+    'Authorization': `Bearer ${token}`
+  });
+}
+
+export function toPeopleResourceName(chatUserName) {
+  if (!chatUserName || typeof chatUserName !== 'string') return null;
+  if (!chatUserName.startsWith('users/')) return null;
+
+  const userId = chatUserName.slice('users/'.length).trim();
+  if (!userId || userId === 'app') return null;
+
+  return `people/${userId}`;
+}
+
+function getPrimaryEmail(emailAddresses = []) {
+  const primary = emailAddresses.find(e => e.metadata?.primary && e.value);
+  if (primary) return primary.value;
+
+  const first = emailAddresses.find(e => e.value);
+  return first ? first.value : '';
+}
+
+export async function enrichSenderWithPeople(apiRequest, sender, cache = new Map()) {
+  if (!sender || sender.userType !== 'HUMAN' || !sender.userId) {
+    return sender;
+  }
+
+  const peopleResourceName = toPeopleResourceName(sender.userId);
+  if (!peopleResourceName) {
+    return sender;
+  }
+
+  if (cache.has(peopleResourceName)) {
+    return {
+      ...sender,
+      ...cache.get(peopleResourceName)
+    };
+  }
+
+  let profile = {};
+
+  try {
+    const person = await apiRequest(
+      'GET',
+      `/v1/${encodeURIComponent(peopleResourceName)}?personFields=names,emailAddresses`
+    );
+
+    const displayName = person.names?.[0]?.displayName || '';
+    const email = getPrimaryEmail(person.emailAddresses || []);
+
+    profile = {
+      ...(displayName ? { displayName } : {}),
+      ...(email ? { email } : {})
+    };
+  } catch (_error) {
+    profile = {};
+  }
+
+  cache.set(peopleResourceName, profile);
+
+  return {
+    ...sender,
+    ...profile
+  };
+}
+
+export async function enrichMessagesWithPeople(apiRequest, messages) {
+  const cache = new Map();
+  return Promise.all(
+    messages.map(async (message) => ({
+      ...message,
+      sender: await enrichSenderWithPeople(apiRequest, message.sender, cache)
+    }))
+  );
 }
 
 export async function search_conversations_withRequest(apiRequest, { spaceNameQuery, pageSize = 100, pageToken }) {
@@ -69,7 +149,7 @@ export async function list_messages({ conversationId, threadId, pageSize = 20, p
 
   const response = await chatApiRequest('GET', `/v1/${conversationId}/messages?${params}`);
 
-  const messages = (response.messages || []).map(msg => ({
+  const mappedMessages = (response.messages || []).map(msg => ({
     messageId: msg.name,
     threadId: msg.thread?.name || '',
     plaintextBody: msg.text || msg.formattedText || '',
@@ -92,6 +172,8 @@ export async function list_messages({ conversationId, threadId, pageSize = 20, p
       count: r.reactionCount || 0
     }))
   }));
+
+  const messages = await enrichMessagesWithPeople(peopleApiRequest, mappedMessages);
 
   return {
     messages,

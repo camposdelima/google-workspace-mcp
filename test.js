@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { encodeGmailMessage, send_message_withRequest } from './services/gmail.js';
-import { search_conversations_withRequest } from './services/chat.js';
+import {
+  search_conversations_withRequest,
+  toPeopleResourceName,
+  enrichSenderWithPeople,
+  enrichMessagesWithPeople
+} from './services/chat.js';
 import { computeFreeSlots, find_free_slots_withListEvents } from './services/calendar.js';
 
 test('gmail.encodeGmailMessage builds base64url payload with headers/body', () => {
@@ -73,6 +78,63 @@ test('chat.search_conversations_withRequest filters by display name (case-insens
   assert.equal(result.conversations.length, 2);
   assert.deepEqual(result.conversations.map(c => c.conversationId), ['spaces/1', 'spaces/3']);
   assert.equal(result.nextPageToken, 'next-123');
+});
+
+test('chat.toPeopleResourceName maps users/{id} to people/{id}', () => {
+  assert.equal(toPeopleResourceName('users/123456'), 'people/123456');
+  assert.equal(toPeopleResourceName('users/app'), null);
+  assert.equal(toPeopleResourceName(''), null);
+  assert.equal(toPeopleResourceName('foo/123'), null);
+});
+
+test('chat.enrichSenderWithPeople enriches human sender with displayName/email', async () => {
+  let callCount = 0;
+  const fakePeopleRequest = async (_method, path) => {
+    callCount += 1;
+    assert.match(path, /\/v1\/people%2F123\?personFields=names,emailAddresses/);
+    return {
+      names: [{ displayName: 'Alice Doe' }],
+      emailAddresses: [{ value: 'alice@example.com', metadata: { primary: true } }]
+    };
+  };
+
+  const cache = new Map();
+  const sender = {
+    userId: 'users/123',
+    displayName: '',
+    email: '',
+    userType: 'HUMAN'
+  };
+
+  const enriched1 = await enrichSenderWithPeople(fakePeopleRequest, sender, cache);
+  const enriched2 = await enrichSenderWithPeople(fakePeopleRequest, sender, cache);
+
+  assert.equal(enriched1.displayName, 'Alice Doe');
+  assert.equal(enriched1.email, 'alice@example.com');
+  assert.equal(enriched2.displayName, 'Alice Doe');
+  assert.equal(callCount, 1);
+});
+
+test('chat.enrichMessagesWithPeople preserves sender on people API errors', async () => {
+  const fakePeopleRequest = async () => {
+    throw new Error('403');
+  };
+
+  const messages = [
+    {
+      messageId: 'm1',
+      sender: {
+        userId: 'users/999',
+        displayName: 'Fallback Name',
+        email: '',
+        userType: 'HUMAN'
+      }
+    }
+  ];
+
+  const enriched = await enrichMessagesWithPeople(fakePeopleRequest, messages);
+  assert.equal(enriched[0].sender.displayName, 'Fallback Name');
+  assert.equal(enriched[0].sender.userId, 'users/999');
 });
 
 test('calendar.computeFreeSlots excludes busy windows and respects interval', () => {
